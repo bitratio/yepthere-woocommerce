@@ -2,7 +2,7 @@
 Tags: woocommerce, address autocomplete, checkout, australia
 Requires at least: 6.4
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 WC requires at least: 8.0
 WC tested up to: 11.3
 License: GPL-2.0-or-later
@@ -27,6 +27,8 @@ The plugin declares compatibility with High-Performance Order Storage and Cart/C
 This plugin uses yepthere, operated by Sessional Limited. An account and a hostname-restricted browser key are required. Create a key at https://yepthere.au/account and review the current service information, terms and privacy links at https://yepthere.au before enabling the service.
 
 On enabled native address forms, typing at least three characters sends the address search text and result limit directly to https://yepthere.au/v1/addresses. The browser key is sent in the x-api-key request header, never in the URL, and fetch uses credentials: omit. Requests are debounced, superseded searches are aborted, and failures return no suggestions. Choosing a suggestion uses its address already held in page memory, with no second request. Search records are not persisted.
+
+The dedicated provider always sends a random token in the X-Search-Session header on every search. The server ignores it when sessions are off; identical URLs retain private browser cache reuse at no charge. The token stays in page memory and is renewed after choosing a suggestion, clearing the address field or 3 minutes idle. The widget, the WooCommerce plugin and the client libraries group the searches for one address into a session, so the searches made while typing an address are grouped and usually count as one lookup. Requests without a session count one each. Sessions allow 20 successful searches, less than 3 minutes idle and less than 10 minutes total. Comparison uses Unicode NFKC and lowercase, collapses every run of non-alphanumeric characters to one space, and trims the result. It does not rewrite abbreviations or localities. One of the new comparison query and the previous successful comparison query must be a prefix of the other; empty comparison strings never continue. Pending starts hold their quota reservation until their own request settles; only a committed start publishes a session. A request waits at most 3 seconds, with at most 16 waiters per pending start; timeout or overflow proceeds as an ordinary charged request without a session. A full pending table does not prevent paid continuations. The hosted widget fallback also always sends the header, with script bytes and ETag independent of the server setting. The provider observes input events on standard address fields to recognise clearing, including when WooCommerce does not call its search function; it does not change those fields.
 
 Only the older-WooCommerce fallback loads https://yepthere.au/widget.js on enabled classic checkout/account edit pages. That widget also sends searches to the addresses endpoint with the browser key in the x-api-key header. The browser connection exposes information such as IP address and site origin to yepthere. The widget can load even when the selected country is not Australia, but address searches are enabled only for Australia.
 
@@ -78,6 +80,9 @@ The native provider returns no suggestions on failure; the fallback widget may s
 Deleting the plugin through WordPress removes its browser key, form preferences, result limit and dismissed-notice option. Deactivation keeps the settings. Retired billing/shipping options are also deleted. WooCommerce’s own options, existing customer addresses and orders are untouched.
 
 == Changelog ==
+
+= 0.3.0 =
+* Searches for one address now share a session so they count as one lookup where the service supports it.
 
 = 0.2.0 =
 * Native WooCommerce address provider for both checkouts and standard account edit-address forms.

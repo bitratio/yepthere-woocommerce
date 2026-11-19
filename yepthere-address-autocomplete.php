@@ -3,7 +3,7 @@
  * Plugin Name: yepthere Address Autocomplete
  * Plugin URI: https://yepthere.au
  * Description: Australian address autocomplete for WooCommerce checkout and account address forms.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Author: Sessional Limited
  * Author URI: https://yepthere.au
  * License: GPL-2.0-or-later
@@ -17,7 +17,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'YEPTHERE_AA_VERSION', '0.2.0' );
+define( 'YEPTHERE_AA_VERSION', '0.3.0' );
 
 add_action( 'before_woocommerce_init', 'yepthere_aa_compatibility' );
 function yepthere_aa_compatibility() {

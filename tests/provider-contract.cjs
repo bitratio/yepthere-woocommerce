@@ -4,13 +4,16 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { webcrypto } = require('node:crypto');
 
 const timers = new Map();
 let timerId = 0;
+let at = 0;
 let calls = [];
 let respond;
 const events = {};
 const window = {
+    crypto: webcrypto,
     yepthereAAProvider: { key: 'sab_live_test_only', limit: 6 },
     wc_address_autocomplete_common_params: { address_providers: [{ id: 'yepthere' }] },
     setTimeout(fn, ms) { timers.set(++timerId, { fn, ms }); return timerId; },
@@ -18,7 +21,7 @@ const window = {
     addEventListener(name, fn) { events[name] = fn; }
 };
 const context = vm.createContext({
-    window, console, AbortController,
+    window, console, AbortController, Date: { now: () => at },
     fetch(url, options) {
         calls.push({ url, options });
         return respond(url, options);
@@ -52,7 +55,8 @@ const success = results => Promise.resolve({ ok: true, json: async () => ({ ok: 
     assert.equal(suggestions.length, 2);
     assert.equal(suggestions[0].label, '12 Test Street, Unit 2, Darwin, NT, 0800');
     assert.deepEqual(plain(suggestions[0].matchedSubstrings), [{ offset: 0, length: 7 }]);
-    assert.equal(calls[0].url, 'https://yepthere.au/v1/addresses?q=12%20Test&limit=6');
+    assert.match(calls[0].url, /^https:\/\/yepthere.au\/v1\/addresses\?q=12%20Test&limit=6$/);
+    assert.match(calls[0].options.headers['X-Search-Session'], /^[A-Za-z0-9_-]{22}$/);
     assert(!calls[0].url.includes(window.yepthereAAProvider.key));
     assert.equal(calls[0].options.headers['x-api-key'], window.yepthereAAProvider.key);
     assert.equal(calls[0].options.credentials, 'omit');
@@ -112,9 +116,43 @@ const success = results => Promise.resolve({ ok: true, json: async () => ({ ok: 
     tick(250);
     assert.equal((await billing).length, 1);
     assert.equal((await shipping).length, 1);
+    async function searchToken(text, slot = 'billing') {
+        const promise = provider.search(text, 'AU', slot);
+        tick(250);
+        const suggestions = await promise;
+        return { token: calls.at(-1).options.headers['X-Search-Session'], url: calls.at(-1).url, suggestions };
+    }
+    const initial = await searchToken('12 Test');
+    assert.match(initial.token, /^[A-Za-z0-9_-]{22}$/);
+    assert.equal((await searchToken('12 Test Street')).token, initial.token);
+    assert.notEqual((await searchToken('12 Test', 'shipping')).token, initial.token);
+    await provider.select(initial.suggestions[0].id);
+    const afterSelect = await searchToken('12 Test');
+    assert.notEqual(afterSelect.token, initial.token);
+    assert.equal(afterSelect.url, initial.url, 'selection keeps identical searches cacheable');
+    await provider.search('', 'AU', 'billing');
+    const afterClear = await searchToken('12 Test');
+    assert.notEqual(afterClear.token, afterSelect.token);
+    assert.equal(afterClear.url, initial.url, 'clearing keeps identical searches cacheable');
+    at = 179999;
+    assert.equal((await searchToken('12 Test Street')).token, afterClear.token);
+    at += 180000;
+    assert.notEqual((await searchToken('12 Test Street Sydney')).token, afterClear.token);
+    const beforeEmpty = await searchToken('12 Test');
+    events.input({ target: { name: 'billing_address_1', value: '' } });
+    assert.notEqual((await searchToken('12 Test')).token, beforeEmpty.token, 'clear resets even when WC never calls search');
+    const block = await searchToken('12 Test', 'checkout');
+    events.input({ target: { id: 'shipping-address_1', value: '' } });
+    assert.notEqual((await searchToken('12 Test', 'checkout')).token, block.token, 'Blocks clear resets its shared slot');
+    const unrelated = await searchToken('12 Test');
+    events.input({ target: { name: 'billing_postcode', value: '' } });
+    assert.equal((await searchToken('12 Test')).token, unrelated.token);
     const leaving = provider.search('Leaving page', 'AU');
     events.pagehide();
     assert.deepEqual(plain(await leaving), []);
     assert.equal(timers.size, 0);
-    console.log('PASS: real WC registration, AU gating, mapping, key transport, selection, debounce/abort, stale results, failures, timeout and form isolation.');
+    for (const call of calls) {
+        assert.match(call.options.headers['X-Search-Session'], /^[A-Za-z0-9_-]{22}$/, 'the dedicated provider always sends a token, without a hosted-widget flag');
+    }
+    console.log('PASS: real WC registration, AU gating, mapping, key transport, selection, debounce/abort, stale results, failures, timeout, form isolation and session lifecycle.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
