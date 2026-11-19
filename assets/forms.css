@@ -1,0 +1,5 @@
+/* Layout only: the widget owns its presentation, accessibility and attribution. */
+.woocommerce .sa-widget {
+    width: 100%;
+    min-width: 0;
+}
